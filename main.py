@@ -15,11 +15,7 @@ app.add_middleware(
 )
 
 API_KEY = "ak_0oo7oz5ubfhwnono3d4uxn7i"
-
-# ---------------------------------------------------------------------------
-# EDIT THIS before deploying — put your logged-in email address here.
-# ---------------------------------------------------------------------------
-EMAIL = "YOUR_EMAIL_HERE"
+EMAIL = "25ds2000019@ds.study.iitm.ac.in"
 
 
 @app.post("/analytics")
