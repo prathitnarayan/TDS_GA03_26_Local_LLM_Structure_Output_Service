@@ -1,61 +1,57 @@
-from collections import defaultdict
-
-from fastapi import FastAPI, Header, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI
+from pydantic import BaseModel
+import re
 
 app = FastAPI()
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
-API_KEY = "ak_0oo7oz5ubfhwnono3d4uxn7i"
-EMAIL = "25ds2000019@ds.study.iitm.ac.in"
+class InvoiceRequest(BaseModel):
+    text: str
 
 
-@app.post("/analytics")
-async def analytics(request: Request, x_api_key: str | None = Header(default=None)):
-    if x_api_key != API_KEY:
-        return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+class InvoiceResponse(BaseModel):
+    vendor: str
+    amount: float
+    currency: str
+    date: str
 
-    body = await request.json()
-    events = body.get("events", [])
 
-    total_events = len(events)
-    unique_users = set()
-    revenue = 0.0
-    per_user_positive = defaultdict(float)
+@app.post("/extract", response_model=InvoiceResponse)
+def extract(req: InvoiceRequest):
+    text = req.text
 
-    for event in events:
-        user = event.get("user")
-        amount = event.get("amount", 0)
+    vendor = ""
 
-        try:
-            amount = float(amount)
-        except (TypeError, ValueError):
-            amount = 0.0
+    vendor_patterns = [
+        r"Vendor[:\s]+(.+)",
+        r"Supplier[:\s]+(.+)",
+        r"Bill From[:\s]+(.+)",
+    ]
 
-        if user is not None:
-            unique_users.add(user)
+    for pattern in vendor_patterns:
+        m = re.search(pattern, text, re.IGNORECASE)
+        if m:
+            vendor = m.group(1).split("\n")[0].strip()
+            break
 
-        if amount > 0:
-            revenue += amount
-            if user is not None:
-                per_user_positive[user] += amount
+    amount = 0.0
+    amt = re.search(r"(?:Total(?: Due)?|Amount Due|Grand Total)[:\s\$€£]*([0-9]+(?:\.[0-9]{1,2})?)", text, re.I)
+    if amt:
+        amount = float(amt.group(1))
 
-    top_user = None
-    if per_user_positive:
-        top_user = max(per_user_positive.items(), key=lambda kv: kv[1])[0]
+    currency = "USD"
+    cur = re.search(r"\b(USD|EUR|GBP)\b", text)
+    if cur:
+        currency = cur.group(1)
 
-    return {
-        "email": EMAIL,
-        "total_events": total_events,
-        "unique_users": len(unique_users),
-        "revenue": revenue,
-        "top_user": top_user,
-    }
+    date = ""
+    d = re.search(r"(\d{4}-\d{2}-\d{2})", text)
+    if d:
+        date = d.group(1)
+
+    return InvoiceResponse(
+        vendor=vendor,
+        amount=amount,
+        currency=currency,
+        date=date,
+    )
